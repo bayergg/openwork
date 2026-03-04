@@ -3,7 +3,7 @@ import type { Agent } from "@opencode-ai/sdk/v2/client";
 import fuzzysort from "fuzzysort";
 import { ArrowUp, AtSign, Check, ChevronDown, File as FileIcon, Paperclip, Square, Terminal, X, Zap } from "lucide-solid";
 
-import type { ComposerAttachment, ComposerDraft, ComposerPart, PromptMode, SlashCommandOption } from "../../types";
+import type { ComposerAttachment, ComposerDraft, ComposerPart, PromptMode, SlashCommandOption, VariantOption } from "../../types";
 import { perfNow, recordPerfLog } from "../../lib/perf-log";
 
 type MentionOption = {
@@ -30,6 +30,7 @@ type ComposerProps = {
   onDraftChange: (draft: ComposerDraft) => void;
   selectedModelLabel: string;
   onModelClick: () => void;
+  variantOptions: VariantOption[];
   modelVariantLabel: string;
   modelVariant: string | null;
   onModelVariantChange: (value: string) => void;
@@ -208,14 +209,6 @@ const readEditorText = (editor: HTMLElement | undefined) => normalizeText(editor
 const RECENT_EMIT_TTL_MS = 30_000;
 const MAX_RECENT_EMITS = 400;
 const DRAFT_FLUSH_DEBOUNCE_MS = 140;
-
-const MODEL_VARIANT_OPTIONS = [
-  { value: "none", label: "None" },
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "xhigh", label: "X-High" },
-];
 
 const partsToText = (parts: ComposerPart[]) =>
   parts
@@ -1877,48 +1870,50 @@ export default function Composer(props: ComposerProps) {
                           {props.selectedModelLabel}
                           <ChevronDown size={14} />
                         </button>
-                        <div class="relative" ref={(el) => (variantPickerRef = el)}>
-                          <button
-                            type="button"
-                            class="flex items-center gap-1.5 px-2 py-1 hover:bg-gray-3 rounded-md text-[13px] font-medium text-gray-11 hover:text-gray-12"
-                            onClick={() => setVariantMenuOpen((open) => !open)}
-                            disabled={props.busy}
-                            aria-expanded={variantMenuOpen()}
-                          >
-                            <span>Thinking</span>
-                            <span class="font-mono text-gray-11">{props.modelVariantLabel}</span>
-                            <ChevronDown size={14} />
-                          </button>
-                          <Show when={variantMenuOpen()}>
-                            <div class="absolute left-0 bottom-full mb-2 w-48 rounded-xl border border-gray-6 bg-gray-1 shadow-xl backdrop-blur-md overflow-hidden z-40">
-                              <div class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-10 border-b border-gray-6">
-                                Thinking effort
+                        <Show when={props.variantOptions.length > 0}>
+                          <div class="relative" ref={(el) => (variantPickerRef = el)}>
+                            <button
+                              type="button"
+                              class="flex items-center gap-1.5 px-2 py-1 hover:bg-gray-3 rounded-md text-[13px] font-medium text-gray-11 hover:text-gray-12"
+                              onClick={() => setVariantMenuOpen((open) => !open)}
+                              disabled={props.busy}
+                              aria-expanded={variantMenuOpen()}
+                            >
+                              <span>Thinking</span>
+                              <span class="font-mono text-gray-11">{props.modelVariantLabel}</span>
+                              <ChevronDown size={14} />
+                            </button>
+                            <Show when={variantMenuOpen()}>
+                              <div class="absolute left-0 bottom-full mb-2 w-48 rounded-xl border border-gray-6 bg-gray-1 shadow-xl backdrop-blur-md overflow-hidden z-40">
+                                <div class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-10 border-b border-gray-6">
+                                  Thinking effort
+                                </div>
+                                <div class="p-2 space-y-1">
+                                  <For each={props.variantOptions}>
+                                    {(option) => (
+                                      <button
+                                        type="button"
+                                        class={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors ${activeVariant() === option.value
+                                          ? "bg-gray-3 text-gray-12"
+                                          : "text-gray-11 hover:bg-gray-2"
+                                          }`}
+                                        onClick={() => {
+                                          props.onModelVariantChange(option.value);
+                                          setVariantMenuOpen(false);
+                                        }}
+                                      >
+                                        <span>{option.label}</span>
+                                        <Show when={activeVariant() === option.value}>
+                                          <span class="text-[10px] uppercase tracking-wider text-gray-10">Active</span>
+                                        </Show>
+                                      </button>
+                                    )}
+                                  </For>
+                                </div>
                               </div>
-                              <div class="p-2 space-y-1">
-                                <For each={MODEL_VARIANT_OPTIONS}>
-                                  {(option) => (
-                                    <button
-                                      type="button"
-                                      class={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors ${activeVariant() === option.value
-                                        ? "bg-gray-3 text-gray-12"
-                                        : "text-gray-11 hover:bg-gray-2"
-                                        }`}
-                                      onClick={() => {
-                                        props.onModelVariantChange(option.value);
-                                        setVariantMenuOpen(false);
-                                      }}
-                                    >
-                                      <span>{option.label}</span>
-                                      <Show when={activeVariant() === option.value}>
-                                        <span class="text-[10px] uppercase tracking-wider text-gray-10">Active</span>
-                                      </Show>
-                                    </button>
-                                  )}
-                                </For>
-                              </div>
-                            </div>
-                          </Show>
-                        </div>
+                            </Show>
+                          </div>
+                        </Show>
                       </div>
                       <div class="flex items-center gap-3 text-gray-10">
                         <Show

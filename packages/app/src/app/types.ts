@@ -131,6 +131,12 @@ export type View = "onboarding" | "dashboard" | "session" | "proto";
 
 export type StartupPreference = "local" | "server";
 
+/** A single thinking-effort option derived from Model.variants at runtime. */
+export type VariantOption = {
+  value: string;
+  label: string;
+};
+
 export type EngineRuntime = "direct" | "openwork-orchestrator";
 
 export type OnboardingStep = "welcome" | "local" | "server" | "connecting";

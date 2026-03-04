@@ -17,6 +17,7 @@ import type {
   View,
   WorkspaceConnectionState,
   WorkspaceDisplay,
+  VariantOption,
   WorkspaceSessionGroup,
   StartupPreference,
 } from "../types";
@@ -189,6 +190,7 @@ export type SessionViewProps = {
   setPrompt: (value: string) => void;
   selectedSessionModelLabel: string;
   openSessionModelPicker: () => void;
+  variantOptions: VariantOption[];
   modelVariantLabel: string;
   modelVariant: string | null;
   setModelVariant: (value: string) => void;
@@ -281,14 +283,6 @@ const MAIN_THREAD_LAG_INTERVAL_MS = 200;
 const MAIN_THREAD_LAG_WARN_MS = 180;
 
 type CommandPaletteMode = "root" | "sessions" | "thinking";
-
-const COMMAND_PALETTE_THINKING_OPTIONS = [
-  { value: "none", label: "None", detail: "Fastest responses" },
-  { value: "low", label: "Low", detail: "Light reasoning" },
-  { value: "medium", label: "Medium", detail: "Balanced depth" },
-  { value: "high", label: "High", detail: "Deeper reasoning" },
-  { value: "xhigh", label: "X-High", detail: "Maximum effort" },
-] as const;
 
 export default function SessionView(props: SessionViewProps) {
   let messagesEndEl: HTMLDivElement | undefined;
@@ -3031,18 +3025,22 @@ export default function SessionView(props: SessionViewProps) {
           });
         },
       },
-      {
-        id: "thinking",
-        title: "Change thinking",
-        detail: `Current: ${props.modelVariantLabel}`,
-        meta: "Adjust",
-        action: () => {
-          setCommandPaletteMode("thinking");
-          setCommandPaletteQuery("");
-          setCommandPaletteActiveIndex(0);
-          focusCommandPaletteInput();
-        },
-      },
+      ...(props.variantOptions.length > 0
+        ? [
+            {
+              id: "thinking",
+              title: "Change thinking",
+              detail: `Current: ${props.modelVariantLabel}`,
+              meta: "Adjust",
+              action: () => {
+                setCommandPaletteMode("thinking");
+                setCommandPaletteQuery("");
+                setCommandPaletteActiveIndex(0);
+                focusCommandPaletteInput();
+              },
+            },
+          ]
+        : []),
     ];
 
     const query = commandPaletteQuery().trim().toLowerCase();
@@ -3069,20 +3067,18 @@ export default function SessionView(props: SessionViewProps) {
   });
 
   const commandPaletteThinkingItems = createMemo<CommandPaletteItem[]>(() => {
-    const normalizedRaw = (props.modelVariant ?? "none").trim().toLowerCase();
-    const activeVariant =
-      normalizedRaw === "balanced" || normalizedRaw === "balance" ? "none" : normalizedRaw;
+    const activeVariant = (props.modelVariant ?? "").trim().toLowerCase();
     const query = commandPaletteQuery().trim().toLowerCase();
 
-    return COMMAND_PALETTE_THINKING_OPTIONS
+    return props.variantOptions
       .filter((option) => {
         if (!query) return true;
-        return `${option.label} ${option.detail}`.toLowerCase().includes(query);
+        return option.label.toLowerCase().includes(query);
       })
       .map((option) => ({
         id: `thinking:${option.value}`,
         title: option.label,
-        detail: option.detail,
+        detail: undefined,
         meta: activeVariant === option.value ? "Current" : undefined,
         action: () => {
           props.setModelVariant(option.value);
@@ -3749,6 +3745,7 @@ export default function SessionView(props: SessionViewProps) {
         onDraftChange={handleDraftChange}
         selectedModelLabel={props.selectedSessionModelLabel || "Model"}
         onModelClick={props.openSessionModelPicker}
+        variantOptions={props.variantOptions}
         modelVariantLabel={props.modelVariantLabel}
         modelVariant={props.modelVariant}
         onModelVariantChange={props.setModelVariant}

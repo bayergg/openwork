@@ -91,6 +91,7 @@ import type {
   UpdateHandle,
   OpencodeConnectStatus,
   ScheduledJob,
+  VariantOption,
 } from "./types";
 import {
   clearStartupPreference,
@@ -2290,44 +2291,76 @@ export default function App() {
   const [modelVariant, setModelVariant] = createSignal<string | null>(null);
   const [autoCompactingSessionId, setAutoCompactingSessionId] = createSignal<string | null>(null);
 
-  const MODEL_VARIANT_OPTIONS = [
-    { value: "none", label: "None" },
-    { value: "low", label: "Low" },
-    { value: "medium", label: "Medium" },
-    { value: "high", label: "High" },
-    { value: "xhigh", label: "X-High" },
-  ];
+  /** Derive available variant options from a model's `variants` metadata. */
+  const variantOptionsForModel = (ref: ModelRef): VariantOption[] => {
+    const allProviders = providers();
+    const provider = allProviders.find((p) => p.id === ref.providerID);
+    if (!provider) return [];
+    const model = provider.models?.[ref.modelID];
+    if (!model) return [];
+    const variants = model.variants as Record<string, unknown> | undefined;
+    if (!variants || typeof variants !== "object") return [];
+    const keys = Object.keys(variants).filter((k) => {
+      const v = variants[k];
+      return !(v && typeof v === "object" && "disabled" in v && (v as Record<string, unknown>).disabled === true);
+    });
+    if (keys.length === 0) return [];
+    return keys.map((key) => ({
+      value: key,
+      label: key.charAt(0).toUpperCase() + key.slice(1),
+    }));
+  };
 
-  const normalizeModelVariant = (value: string | null) => {
+  /** Variant options for the currently selected session model. */
+  const currentModelVariantOptions = createMemo(() =>
+    variantOptionsForModel(selectedSessionModel()),
+  );
+
+  /** Variant options for the default model. */
+  const defaultModelVariantOptions = createMemo(() =>
+    variantOptionsForModel(defaultModel()),
+  );
+
+  const normalizeModelVariant = (value: string | null, options: VariantOption[]) => {
     if (!value) return null;
     const trimmed = value.trim().toLowerCase();
-    if (trimmed === "balance" || trimmed === "balanced") return "none";
-    const match = MODEL_VARIANT_OPTIONS.find((option) => option.value === trimmed);
+    const match = options.find((option) => option.value === trimmed);
     return match ? match.value : null;
   };
 
   const resolveCodexReasoningEffort = (modelID: string, variant: string | null) => {
     if (!modelID.trim().toLowerCase().includes("codex")) return undefined;
-    const normalized = normalizeModelVariant(variant);
-    if (!normalized || normalized === "none") return undefined;
-    if (normalized === "xhigh") return "high";
-    return normalized;
+    if (!variant) return undefined;
+    const v = variant.trim().toLowerCase();
+    if (v === "none" || v === "") return undefined;
+    if (v === "xhigh") return "high";
+    return v;
   };
 
-  const formatModelVariantLabel = (value: string | null) => {
-    const normalized = normalizeModelVariant(value) ?? "none";
-    return MODEL_VARIANT_OPTIONS.find((option) => option.value === normalized)?.label ?? "None";
+  const formatModelVariantLabel = (value: string | null, options: VariantOption[]) => {
+    if (!value) return options.length > 0 ? "Off" : "";
+    const match = options.find((option) => option.value === value);
+    return match ? match.label : "Off";
   };
 
-  const handleEditModelVariant = () => {
+  const handleEditModelVariant = (options: VariantOption[]) => {
+    if (options.length === 0) {
+      window.alert("The current model does not support thinking variants.");
+      return;
+    }
+    const names = options.map((o) => o.value).join(", ");
     const next = window.prompt(
-      "Model variant (none, low, medium, high, xhigh)",
-      normalizeModelVariant(modelVariant()) ?? "none"
+      `Model variant (${names})`,
+      modelVariant() ?? ""
     );
     if (next == null) return;
-    const normalized = normalizeModelVariant(next);
+    if (!next.trim()) {
+      setModelVariant(null);
+      return;
+    }
+    const normalized = normalizeModelVariant(next, options);
     if (!normalized) {
-      window.alert("Variant must be one of: none, low, medium, high, xhigh.");
+      window.alert(`Variant must be one of: ${names}`);
       return;
     }
     setModelVariant(normalized);
@@ -4903,10 +4936,9 @@ export default function App() {
 
         const storedVariant = window.localStorage.getItem(VARIANT_PREF_KEY);
         if (storedVariant && storedVariant.trim()) {
-          const normalized = normalizeModelVariant(storedVariant);
-          if (normalized) {
-            setModelVariant(normalized);
-          }
+          // Set the raw stored value; the auto-clear effect will validate it
+          // against the model's available variants once provider data loads.
+          setModelVariant(storedVariant.trim());
         }
 
         const storedUpdateAutoCheck = window.localStorage.getItem(
@@ -5359,6 +5391,22 @@ export default function App() {
     }
   });
 
+  // Auto-clear the thinking variant when the selected model doesn't support it.
+  createEffect(() => {
+    const options = currentModelVariantOptions();
+    const current = modelVariant();
+    if (!current) return;
+    if (options.length === 0) {
+      // Model has no variants at all -- clear.
+      setModelVariant(null);
+      return;
+    }
+    if (!options.some((o) => o.value === current)) {
+      // Current variant is not in this model's available list -- clear.
+      setModelVariant(null);
+    }
+  });
+
   createEffect(() => {
     const state = updateStatus();
     if (typeof window === "undefined") return;
@@ -5763,8 +5811,8 @@ export default function App() {
       toggleAutoCompactContext: () => setAutoCompactContext((v) => !v),
       hideTitlebar: hideTitlebar(),
       toggleHideTitlebar: () => setHideTitlebar((v) => !v),
-      modelVariantLabel: formatModelVariantLabel(modelVariant()),
-      editModelVariant: handleEditModelVariant,
+      modelVariantLabel: formatModelVariantLabel(modelVariant(), defaultModelVariantOptions()),
+      editModelVariant: () => handleEditModelVariant(defaultModelVariantOptions()),
       updateAutoCheck: updateAutoCheck(),
       toggleUpdateAutoCheck: () => setUpdateAutoCheck((v) => !v),
       updateAutoDownload: updateAutoDownload(),
@@ -5905,7 +5953,8 @@ export default function App() {
     installUpdateAndRestart,
     selectedSessionModelLabel: selectedSessionModelLabel(),
     openSessionModelPicker: openSessionModelPicker,
-    modelVariantLabel: formatModelVariantLabel(modelVariant()),
+    variantOptions: currentModelVariantOptions(),
+    modelVariantLabel: formatModelVariantLabel(modelVariant(), currentModelVariantOptions()),
     modelVariant: modelVariant(),
     setModelVariant: (value: string) => setModelVariant(value),
     activePlugins: sidebarPluginList(),
