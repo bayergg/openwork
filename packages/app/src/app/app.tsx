@@ -4047,15 +4047,17 @@ export default function App() {
       return;
     }
 
-    const id = selectedSessionId();
-    if (!id) {
-      setModelPickerOpen(false);
-      return;
-    }
-
-    setSessionModelOverrideById((current) => ({ ...current, [id]: next }));
+    // Always update the default model so the label reflects the choice,
+    // even when no session exists yet (selectedSessionModel falls back
+    // to defaultModel when selectedSessionId is null).
     setDefaultModelExplicit(true);
     setDefaultModel(next);
+
+    const id = selectedSessionId();
+    if (id) {
+      setSessionModelOverrideById((current) => ({ ...current, [id]: next }));
+    }
+
     setModelPickerOpen(false);
 
     if (typeof window !== "undefined" && currentView() === "session") {
